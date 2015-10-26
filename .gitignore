@@ -1,0 +1,8 @@
+node_modules
+build/main.js
+build/specs.js
+build/vendors.js
+TEST-App.xml
+npm-debug.log
+dist
+.DS_Store

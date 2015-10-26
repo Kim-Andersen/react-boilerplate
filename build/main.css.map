@@ -1,0 +1,1 @@
+{"version":3,"sources":["main.css"],"names":[],"mappings":"AAAA;EACE,oBAAoB;EACpB,YAAY;EACZ,gCAAwB;UAAxB,wBAAwB,EAAE","file":"main.css","sourcesContent":["body {\n  background: #f4f4f5;\n  opacity: .5;\n  transition: all 1s ease; }\n"],"sourceRoot":"/source/"}
