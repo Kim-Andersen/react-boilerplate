@@ -166,6 +166,7 @@ gulp.task('cssTask', function() {
         .pipe(autoprefixer(autoprefixerOptions))
         .pipe(sourcemaps.write('.'))
         .pipe(gulp.dest(path.buildDir))
+        .pipe(livereload())
         .pipe(notify(function () {
           console.log('Sass bundle built in ' + (Date.now() - start) + 'ms');
         }));
