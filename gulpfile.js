@@ -17,117 +17,103 @@ var glob = require('glob');
 var livereload = require('gulp-livereload');
 var jasminePhantomJs = require('gulp-jasmine2-phantomjs');
 var connect = require('gulp-connect');
+var babelify = require('babelify');
 var sass = require('gulp-sass');
+var sourcemaps = require('gulp-sourcemaps');
 var autoprefixer = require('gulp-autoprefixer');
-var sourcemaps   = require('gulp-sourcemaps');
-var inject = require('gulp-inject');
-var rev = require('gulp-rev');
-var buffer = require('gulp-buffer');
-var del = require('del');
-var imagemin = require('gulp-imagemin');
-var cache = require('gulp-cache');
-var htmlmin = require('gulp-htmlmin');
 
 // External dependencies you do not want to rebundle while developing,
 // but include in your application deployment
 var dependencies = [
-  'react',
+	'react',
   'react/addons'
 ];
 
-var path = {
-  buildDir: './build',
-  deployDir: './dist',
-  sassDir : './sass'
-};
-
-var development = true;
-
-gulp.task('browserifyTask', function () {
-
-  var dest = development ? path.buildDir : path.deployDir;
+var browserifyTask = function (options) {
 
   // Our app bundler
-  var appBundler = browserify({
-    entries: ['./app/main.js'], // Only need initial file, browserify finds the rest
-    transform: [reactify], // We want to convert JSX to normal javascript
-    debug: development, // Gives us sourcemapping
-    cache: {}, 
+	var appBundler = browserify({
+		entries: [options.src], // Only need initial file, browserify finds the rest
+   	transform: [reactify], // We want to convert JSX to normal javascript
+    extensions: ['.js', '.jsx'],
+		debug: options.development, // Gives us sourcemapping
+		cache: {}, 
     packageCache: {}, 
-    fullPaths: development // Requirement of watchify
-  });
+    fullPaths: options.development // Requirement of watchify
+	});
 
-  // We set our dependencies as externals on our app bundler when developing    
-  (development ? dependencies : []).forEach(function (dep) {
-    appBundler.external(dep);
-  });
+	// We set our dependencies as externals on our app bundler when developing		
+	(options.development ? dependencies : []).forEach(function (dep) {
+		appBundler.external(dep);
+	});
 
   // The rebundle process
   var rebundle = function () {
     var start = Date.now();
     console.log('Building APP bundle');
-    return appBundler.bundle()
+    appBundler
+      .transform(babelify, { presets: ['es2015'] })
+      .bundle()
       .on('error', gutil.log)
       .pipe(source('main.js'))
-      .pipe(gulpif(!development, streamify(uglify())))
-      .pipe(gulpif(!development, buffer()))
-      .pipe(gulpif(!development, rev()))
-      .pipe(gulp.dest(dest))
-      .pipe(gulpif(development, livereload()))
+      .pipe(gulpif(!options.development, streamify(uglify())))
+      .pipe(gulp.dest(options.dest))
+      .pipe(gulpif(options.development, livereload()))
       .pipe(notify(function () {
         console.log('APP bundle built in ' + (Date.now() - start) + 'ms');
       }));
   };
 
   // Fire up Watchify when developing
-  if (development) {
+  if (options.development) {
     appBundler = watchify(appBundler);
     appBundler.on('update', rebundle);
   }
-  
-  if (!development) {
-    return rebundle();  
-  }
-  else {
-    rebundle();
-  
-    // We create a separate bundle for our dependencies as they
-    // should not rebundle on file changes. This only happens when
-    // we develop. When deploying the dependencies will be included 
-    // in the application bundle
+      
+  rebundle();
 
-    var testFiles = glob.sync('./specs/**/*-spec.js');
-    var testBundler = browserify({
-      entries: testFiles,
-      debug: true, // Gives us sourcemapping
-      transform: [reactify],
-      cache: {}, packageCache: {}, fullPaths: true // Requirement of watchify
-    });
+  // We create a separate bundle for our dependencies as they
+  // should not rebundle on file changes. This only happens when
+  // we develop. When deploying the dependencies will be included 
+  // in the application bundle
+  if (options.development) {
 
-    dependencies.forEach(function (dep) {
-      testBundler.external(dep);
-    });
+  	var testFiles = glob.sync('./specs/**/*-spec.js');
+		var testBundler = browserify({
+			entries: testFiles,
+			debug: true, // Gives us sourcemapping
+      extensions: ['.js', '.jsx'],
+			transform: [reactify],
+			cache: {}, 
+      packageCache: {}, 
+      fullPaths: true // Requirement of watchify
+		});
 
-    var rebundleTests = function () {
-      var start = Date.now();
-      console.log('Building TEST bundle');
-      testBundler.bundle()
+		dependencies.forEach(function (dep) {
+			testBundler.external(dep);
+		});
+
+  	var rebundleTests = function () {
+  		var start = Date.now();
+  		console.log('Building TEST bundle');
+  		testBundler
+        .transform(babelify, { presets: ['es2015'] })
+        .bundle()
       .on('error', gutil.log)
-        .pipe(source('specs.js'))
-        .pipe(gulp.dest(dest))
-        .pipe(livereload())
-        .pipe(notify(function () {
-          console.log('TEST bundle built in ' + (Date.now() - start) + 'ms');
-        }));
-    };
+	      .pipe(source('specs.js'))
+	      .pipe(gulp.dest(options.dest))
+	      .pipe(livereload())
+	      .pipe(notify(function () {
+	        console.log('TEST bundle built in ' + (Date.now() - start) + 'ms');
+	      }));
+  	};
 
     testBundler = watchify(testBundler);
     testBundler.on('update', rebundleTests);
     rebundleTests();
 
-    // Remove react-addons when deploying, as it is only for
-    // testing
-    if (!development) {
+    // Remove react-addons when deploying, as it is only for testing
+    if (!options.development) {
       dependencies.splice(dependencies.indexOf('react-addons'), 1);
     }
 
@@ -139,93 +125,97 @@ gulp.task('browserifyTask', function () {
     // Run the vendor bundle
     var start = new Date();
     console.log('Building VENDORS bundle');
-    return vendorsBundler.bundle()
+    vendorsBundler
+      .transform(babelify, { presets: ['es2015'] })
+      .bundle()
       .on('error', gutil.log)
       .pipe(source('vendors.js'))
-      .pipe(gulpif(!development, streamify(uglify())))
-      .pipe(gulp.dest(dest))
+      .pipe(gulpif(!options.development, streamify(uglify())))
+      .pipe(gulp.dest(options.dest))
       .pipe(notify(function () {
         console.log('VENDORS bundle built in ' + (Date.now() - start) + 'ms');
-      })); 
+      }));
+    
   }
-});
+  
+}
 
-gulp.task('cssTask', function() {
-
-  var src = path.sassDir+'/**/*.scss',
-      autoprefixerOptions = {browsers: ['last 2 version', 'safari 5', 'ie 8', 'ie 9', 'opera 12.1', 'ios 6', 'android 4']};
-
-  if(development) {
-    var run = function () {
-      console.log(arguments);
-      var start = new Date();
-      console.log('Building CSS bundle');
-      return gulp.src(src)
-        .pipe(sass({errLogToConsole: true}).on('error', sass.logError))
-        .pipe(sourcemaps.init())
-        .pipe(autoprefixer(autoprefixerOptions))
-        .pipe(sourcemaps.write('.'))
-        .pipe(gulp.dest(path.buildDir))
-        .pipe(livereload())
-        .pipe(notify(function () {
-          console.log('Sass bundle built in ' + (Date.now() - start) + 'ms');
-        }));
-    };
-    run();
-    gulp.watch(src, run);
-  } else {
-    return gulp.src(src)
-      .pipe(sass({errLogToConsole: true}).on('error', sass.logError))
+var sassTask = function(options) {
+  var task = function(){
+    return gulp.src(options.src)
       .pipe(sourcemaps.init())
-      .pipe(autoprefixer(autoprefixerOptions))
-      .pipe(cssmin())
-      .pipe(rev())
-      .pipe(sourcemaps.write('.'))
-      .pipe(gulp.dest(path.deployDir));
+      .pipe(autoprefixer({
+        browsers: ['last 2 versions'],
+        cascade: false
+      }))
+      .pipe(sass({
+        outputStyle: options.development ? 'nested': 'compressed',
+        errLogToConsole: true
+      }).on('error', sass.logError))
+      .pipe(sourcemaps.write())
+      .pipe(gulp.dest(options.dest))
+      .pipe(livereload())
+      .pipe(notify(function () {
+        console.log('Sass built in ' + (Date.now() - start) + 'ms');
+      }));
   }
-});
 
-gulp.task('indexTask', ['browserifyTask', 'cssTask'], function(){
-  var target = gulp.src(path.buildDir + '/index.html');
-  var sources = gulp.src([path.deployDir + '/*.js', path.deployDir + '/*.css'], {read: false});
+  if(options.watch) {
+    return gulp.watch('./sass/**/*.scss', task);
+  } else {
+    return task();
+  }  
+};
 
-  return target
-    .pipe(inject(sources, {removeTags: true, cwd: __dirname + '/dist', ignorePath: '/dist', addRootSlash: false}))
-    .pipe(htmlmin({collapseWhitespace: true}))
-    .pipe(gulp.dest(path.deployDir));
-});
-
-gulp.task('cleanTask', function(cb) {
-  return del([path.deployDir], cb)
-});
-
-gulp.task('imagesTask', function() {
-  return gulp.src(path.buildDir+'/images/**/*')
-    .pipe(cache(imagemin({ optimizationLevel: 3, progressive: true, interlaced: true })))
-    .pipe(gulp.dest(path.deployDir+'/images/'))
-    .pipe(notify({ message: 'Images task complete' }));
-});
+var config = {
+  appEntryFile: './app/main.js',
+  buildDir: './build',
+  destDir: './dist',
+  sassSrc: './sass/**/*.scss'
+}
 
 // Starts our development workflow
 gulp.task('default', function () {
-  
   livereload.listen();
-  development = true;
 
-  gulp.start('browserifyTask', 'cssTask');
+  var development = true
+
+  browserifyTask({
+    development: development,
+    src: config.appEntryFile,
+    dest: config.destDir
+  });
+
+  sassTask({
+    watch: true,
+    development: development,
+    src: config.sassSrc,
+    dest: config.buildDir
+  });
 
   connect.server({
-    root: path.buildDir,
+    root: config.buildDir,
     port: 8889
   });
 
 });
 
-gulp.task('deploy', ['cleanTask'], function () {
+gulp.task('deploy', function () {
 
-  development = false;
+  var development = false
 
-  gulp.start('browserifyTask', 'cssTask', 'indexTask', 'imagesTask');
+  browserifyTask({
+    development: development,
+    src: config.appEntryFile,
+    dest: config.destDir
+  });
+  
+  sassTask({
+    watch: false,
+    development: development,
+    src: config.sassSrc,
+    dest: config.destDir
+  });
 
 });
 

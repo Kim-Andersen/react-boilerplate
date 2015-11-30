@@ -1,12 +1,14 @@
-var React = require('react');
+"use strict"
 
-var App = React.createClass({
+import React from 'react'
+import { PropTypes } from 'react'
+
+let App = React.createClass({
 	render: function() {
 		return (
-			<h1>Hello, world!</h1>
+			<h1>Hello world!</h1>
 		);
 	}
+})
 	
-});
-	
-module.exports = App;
+export default App
